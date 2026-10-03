@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Remove untagged images after 1 day",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 1
+      },
+      "action": {
+        "type": "expire"
+      }
+    },
+    {
+      "rulePriority": 2,
+      "description": "Keep only the 15 most recent tagged images",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPrefixList": ["build-"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 15
+      },
+      "action": {
+        "type": "expire"
+      }
+    }
+  ]
+}
