@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Test / Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Reports — generated during pipeline, not committed
+reports/*.xml
+reports/*.json
+reports/*.sarif
+reports/*.txt
+!reports/.gitkeep
+
+# Signing keys — never commit private keys
+cosign.key
+cosign.pub
+*.pem
+*.key
+
+# Docker
+.docker/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jenkins workspace artifacts
+workspace/
