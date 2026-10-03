@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+tests/
+*.md
+.git/
+.gitignore
+pyproject.toml
+requirements-dev.txt
