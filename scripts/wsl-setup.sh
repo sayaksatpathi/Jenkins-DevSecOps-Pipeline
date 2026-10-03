@@ -121,10 +121,11 @@ section "4. Jenkins"
 if systemctl is-active --quiet jenkins 2>/dev/null || service jenkins status &>/dev/null 2>&1; then
     ok "Jenkins already running"
 else
-    # Add Jenkins repo
+    # Add Jenkins repo — use gpg --dearmor so the key is in binary format
+    # (Ubuntu 22.04+ rejects ASCII-armored .asc keys in signed-by)
     curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key \
-        | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-    echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+        | sudo gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] \
         https://pkg.jenkins.io/debian-stable binary/" \
         | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
 
