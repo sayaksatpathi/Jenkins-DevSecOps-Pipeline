@@ -7,6 +7,7 @@ client = TestClient(app)
 
 # ─── Root endpoint ────────────────────────────────────────────────────────────
 
+
 def test_root_status_200():
     assert client.get("/").status_code == 200
 
@@ -32,6 +33,7 @@ def test_root_version_present():
 
 
 # ─── Health endpoint ───────────────────────────────────────────────────────────
+
 
 def test_health_status_200():
     assert client.get("/health").status_code == 200
@@ -59,19 +61,21 @@ def test_health_version_present():
 
 # ─── Consistency ──────────────────────────────────────────────────────────────
 
+
 def test_root_and_health_same_service():
-    root_service   = client.get("/").json()["service"]
+    root_service = client.get("/").json()["service"]
     health_service = client.get("/health").json()["service"]
     assert root_service == health_service
 
 
 def test_root_and_health_same_version():
-    root_ver   = client.get("/").json()["version"]
+    root_ver = client.get("/").json()["version"]
     health_ver = client.get("/health").json()["version"]
     assert root_ver == health_ver
 
 
 # ─── Negative cases ───────────────────────────────────────────────────────────
+
 
 def test_unknown_path_404():
     assert client.get("/nonexistent").status_code == 404
