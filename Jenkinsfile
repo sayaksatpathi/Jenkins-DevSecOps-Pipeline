@@ -77,7 +77,7 @@ pipeline {
             agent {
                 docker {
                     image 'python:3.12-slim'
-                    args  '--user root'
+                    args  '--user root --network host'
                     reuseNode true
                 }
             }
@@ -111,7 +111,7 @@ pipeline {
             agent {
                 docker {
                     image 'python:3.12-slim'
-                    args  '--user root'
+                    args  '--user root --network host'
                     reuseNode true
                 }
             }
@@ -139,7 +139,7 @@ pipeline {
             agent {
                 docker {
                     image 'python:3.12-slim'
-                    args  '--user root'
+                    args  '--user root --network host'
                     reuseNode true
                 }
             }
@@ -175,7 +175,7 @@ pipeline {
             agent {
                 docker {
                     image 'python:3.12-slim'
-                    args  '--user root'
+                    args  '--user root --network host'
                     reuseNode true
                 }
             }
