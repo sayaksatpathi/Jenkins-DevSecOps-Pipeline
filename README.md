@@ -105,6 +105,8 @@ GitHub ──── webhook (HMAC-SHA256) ────► Jenkins
 ECR, cosign-signed and verified by digest, deployed and health-checked. Logs and
 reports are in [`evidence/build-13/`](evidence/build-13/).
 
+![Jenkins Stage View — build #13, all stages green](screenshots/successful-build/01-pipeline-overview.png)
+
 ---
 
 ## Security Gates
