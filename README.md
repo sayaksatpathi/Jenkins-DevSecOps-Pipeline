@@ -101,6 +101,12 @@ GitHub ──── webhook (HMAC-SHA256) ────► Jenkins
 
 ---
 
+**Latest run:** [Build #13](evidence/build-13/) — all 12 stages green, image pushed to
+ECR, cosign-signed and verified by digest, deployed and health-checked. Logs and
+reports are in [`evidence/build-13/`](evidence/build-13/).
+
+---
+
 ## Security Gates
 
 Any gate failure **stops the pipeline immediately** — no code reaches deployment
