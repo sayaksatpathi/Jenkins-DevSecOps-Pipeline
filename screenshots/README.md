@@ -2,6 +2,9 @@
 
 This directory holds evidence captures from Jenkins pipeline runs.
 
+The text evidence for the first fully green run (console log, test, SAST, Trivy,
+SBOM and cosign reports) is already committed in [`../evidence/build-13/`](../evidence/build-13/).
+
 ## Required Screenshots
 
 Capture these from an actual Jenkins instance after the pipeline runs:
