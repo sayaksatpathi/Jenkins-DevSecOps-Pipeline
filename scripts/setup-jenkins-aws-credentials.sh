@@ -62,6 +62,7 @@ def dec    = {{ s -> new String(java.util.Base64.decoder.decode(s), 'UTF-8') }}
     store.addCredentials(domain, new StringCredentialsImpl(CredentialsScope.GLOBAL, id, v[0], Secret.fromString(v[1])))
     println "    stored Jenkins credential '${{id}}'"
 }}
+null  // the script console echoes the last value; never let that be the secrets map
 """)
 PY
 
