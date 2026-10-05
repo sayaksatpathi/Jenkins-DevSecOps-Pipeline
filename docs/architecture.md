@@ -52,19 +52,21 @@ Jenkins Pipeline (Jenkinsfile)
     ├─ Stage 8:  SBOM ──────────────────── (Jenkins agent: syft installed)
     │               └── syft → CycloneDX + SPDX JSON (archived)
     │
-    ├─ Stage 9:  Sign Image ────────────── (Jenkins agent: cosign installed)
-    │               └── cosign sign + verify
-    │
-    ├─ Stage 10: Push to ECR ───────────── (Jenkins agent: aws cli + docker)
+    ├─ Stage 9:  Push to ECR ───────────── (Jenkins agent: aws cli + docker)
     │               └── ecr get-login-password → docker push
+    │                   → record immutable digest (reports/image-digest.txt)
+    │
+    ├─ Stage 10: Sign Image ────────────── (Jenkins agent: cosign installed)
+    │               └── cosign sign + verify, by digest
+    │                   (signature is stored in ECR beside the image)
     │
     ├─ Stage 11: Deploy ────────────────── (Jenkins agent: ssh + aws cli)
-    │               └── SSH → EC2 Docker host → docker run
-    │               [only on: branch 'main' OR FORCE_DEPLOY=true]
+    │               └── SSH → Docker host → docker run <signed digest>
+    │               [only on: main branch OR FORCE_DEPLOY=true]
     │
     └─ Stage 12: Verify
-                    └── curl /health → assert status=healthy
-                    [only on: branch 'main' OR FORCE_DEPLOY=true]
+                    └── curl /health → assert status=healthy + version=<git sha>
+                    [only on: main branch OR FORCE_DEPLOY=true]
                               │
                  ┌────────────┴────────────┐
                  │                         │

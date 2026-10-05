@@ -28,8 +28,8 @@ Stage 5:  Dependency Scan SKIPPED
 Stage 6:  Docker Build   SKIPPED
 Stage 7:  Trivy Scan     SKIPPED
 Stage 8:  SBOM           SKIPPED
-Stage 9:  Sign Image     SKIPPED
-Stage 10: Push to ECR    SKIPPED ← no image pushed
+Stage 9:  Push to ECR    SKIPPED ← no image pushed
+Stage 10: Sign Image     SKIPPED
 Stage 11: Deploy         SKIPPED ← no deployment
 Stage 12: Verify         SKIPPED
 
@@ -69,7 +69,7 @@ Stage 3:  Lint            ✓ PASS
 Stage 4:  SAST            ✗ FAIL  ← semgrep: hardcoded secret
 Stage 5:  Dependency Scan SKIPPED
 Stage 6:  Docker Build    SKIPPED ← no image built
-Stage 10: Push to ECR     SKIPPED ← no image pushed
+Stage 9:  Push to ECR     SKIPPED ← no image pushed
 Stage 11: Deploy          SKIPPED ← no deployment
 
 BUILD RESULT: FAILURE
@@ -141,8 +141,8 @@ Then rebuild. The old Python 3.9-slim image contains OS packages with CRITICAL C
 Stage 6:  Docker Build   ✓ PASS
 Stage 7:  Trivy Scan     ✗ FAIL  ← CRITICAL vulns found, exit-code 1
 Stage 8:  SBOM           SKIPPED
-Stage 9:  Sign Image     SKIPPED
-Stage 10: Push to ECR    SKIPPED ← vulnerable image never pushed
+Stage 9:  Push to ECR    SKIPPED ← vulnerable image never pushed
+Stage 10: Sign Image     SKIPPED
 Stage 11: Deploy         SKIPPED ← vulnerable image never deployed
 
 BUILD RESULT: FAILURE
@@ -238,7 +238,7 @@ git push origin main
 | Docker Build     | Build fails                | No                  |
 | Trivy            | Security gate fails        | No                  |
 | SBOM             | Build fails                | No                  |
-| Sign Image       | Build fails                | No                  |
 | Push to ECR      | Delivery fails             | No                  |
+| Sign Image       | Build fails                | No                  |
 | Deploy           | Deployment fails           | No                  |
 | Verify           | Deployment rejected        | No (rollback)       |

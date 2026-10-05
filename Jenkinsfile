@@ -313,7 +313,57 @@ print(len(d.get('components', [])))
             }
         }
 
-        // ── 9. Sign Image ─────────────────────────────────────────────────────
+        // ── 9. Push to ECR ────────────────────────────────────────────────────
+        // Push precedes signing: cosign stores the signature in the registry
+        // next to the image, so the image has to be there first.
+        stage('Push to ECR') {
+            environment {
+                AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+                AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+            }
+            steps {
+                sh '''
+                    echo "==> Authenticating with Amazon ECR..."
+                    aws ecr get-login-password --region "$AWS_REGION" | \\
+                        docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+                    echo "==> Pushing $FULL_IMAGE..."
+                    docker push "$FULL_IMAGE"
+
+                    echo "==> Pushing build tag $FULL_IMAGE_BUILD..."
+                    docker tag "$FULL_IMAGE" "$FULL_IMAGE_BUILD"
+                    docker push "$FULL_IMAGE_BUILD"
+
+                    echo "==> ECR image details:"
+                    aws ecr describe-images \\
+                        --repository-name "$APP_NAME" \\
+                        --region "$AWS_REGION" \\
+                        --image-ids imageTag="$IMAGE_TAG" \\
+                        --query 'imageDetails[0].{Digest:imageDigest,Pushed:imagePushedAt,SizeBytes:imageSizeInBytes}' \\
+                        --output table
+
+                    aws ecr describe-images \\
+                        --repository-name "$APP_NAME" \\
+                        --region "$AWS_REGION" \\
+                        --image-ids imageTag="$IMAGE_TAG" \\
+                        --query 'imageDetails[0].imageDigest' \\
+                        --output text > reports/image-digest.txt
+
+                    echo "✓ Push to ECR PASSED"
+                '''
+                script {
+                    // Sign and deploy the immutable digest ECR reports, never a mutable tag
+                    env.IMAGE_REF = "${env.ECR_REGISTRY}/${env.APP_NAME}@${readFile('reports/image-digest.txt').trim()}"
+                }
+            }
+            post {
+                failure {
+                    echo '✗ ECR push FAILED — deployment cancelled'
+                }
+            }
+        }
+
+        // ── 10. Sign Image ────────────────────────────────────────────────────
         stage('Sign Image') {
             environment {
                 COSIGN_PASSWORD = credentials('cosign-password')
@@ -322,19 +372,17 @@ print(len(d.get('components', [])))
                 withCredentials([
                     file(credentialsId: 'cosign-private-key', variable: 'COSIGN_KEY')
                 ]) {
-                    sh """
-                        echo "==> Cosign: signing \${FULL_IMAGE}..."
-                        cosign sign --yes \\
-                            --key "\$COSIGN_KEY" \\
-                            "\${FULL_IMAGE}"
+                    sh '''
+                        echo "==> Cosign: signing $IMAGE_REF..."
+                        cosign sign --yes --key "$COSIGN_KEY" "$IMAGE_REF"
 
-                        echo "==> Cosign: verifying signature..."
-                        cosign verify \\
-                            --key "\$COSIGN_KEY" \\
-                            "\${FULL_IMAGE}"
+                        echo "==> Cosign: verifying signature against the public key..."
+                        cosign public-key --key "$COSIGN_KEY" > reports/cosign.pub
+                        cosign verify --key reports/cosign.pub "$IMAGE_REF" > reports/cosign-verify.json
+                        cat reports/cosign-verify.json
 
                         echo "✓ Image signed and signature verified"
-                    """
+                    '''
                 }
             }
             post {
@@ -344,48 +392,12 @@ print(len(d.get('components', [])))
             }
         }
 
-        // ── 10. Push to ECR ───────────────────────────────────────────────────
-        stage('Push to ECR') {
-            environment {
-                AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
-                AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-            }
-            steps {
-                sh """
-                    echo "==> Authenticating with Amazon ECR..."
-                    aws ecr get-login-password --region "\${AWS_REGION}" | \\
-                        docker login --username AWS --password-stdin "\${ECR_REGISTRY}"
-
-                    echo "==> Pushing \${FULL_IMAGE}..."
-                    docker push "\${FULL_IMAGE}"
-
-                    echo "==> Pushing build tag \${FULL_IMAGE_BUILD}..."
-                    docker tag "\${FULL_IMAGE}" "\${FULL_IMAGE_BUILD}"
-                    docker push "\${FULL_IMAGE_BUILD}"
-
-                    echo "==> ECR image details:"
-                    aws ecr describe-images \\
-                        --repository-name "\${APP_NAME}" \\
-                        --region "\${AWS_REGION}" \\
-                        --image-ids imageTag="\${IMAGE_TAG}" \\
-                        --query 'imageDetails[0].{Digest:imageDigest,Pushed:imagePushedAt,SizeBytes:imageSizeInBytes}' \\
-                        --output table
-
-                    echo "✓ Push to ECR PASSED"
-                """
-            }
-            post {
-                failure {
-                    echo '✗ ECR push FAILED — deployment cancelled'
-                }
-            }
-        }
-
         // ── 11. Deploy ────────────────────────────────────────────────────────
         stage('Deploy') {
             when {
                 anyOf {
-                    branch 'main'
+                    branch 'main'                                                   // multibranch jobs
+                    expression { return env.GIT_BRANCH in ['main', 'origin/main'] } // single-branch pipeline jobs
                     expression { return params.FORCE_DEPLOY }
                 }
             }
@@ -401,41 +413,35 @@ print(len(d.get('components', [])))
                         usernameVariable: 'SSH_USER'
                     )
                 ]) {
-                    sh """
-                        echo "==> Deploying \${FULL_IMAGE} to \$DEPLOY_HOST..."
+                    sh '''
+                        echo "==> Deploying $IMAGE_REF to $DEPLOY_HOST..."
+                        remote() {
+                            ssh -i "$SSH_KEY" \\
+                                -o StrictHostKeyChecking=no \\
+                                -o UserKnownHostsFile=/dev/null \\
+                                -o LogLevel=ERROR \\
+                                -o ConnectTimeout=30 \\
+                                "$SSH_USER@$DEPLOY_HOST" "$@"
+                        }
 
-                        # Get ECR auth token before SSH (token valid for 12 h)
-                        ECR_PASSWORD=\$(aws ecr get-login-password --region "\${AWS_REGION}")
+                        # The ECR token travels over stdin, never on a command line
+                        aws ecr get-login-password --region "$AWS_REGION" | \\
+                            remote "docker login --username AWS --password-stdin $ECR_REGISTRY"
 
-                        ssh -i "\$SSH_KEY" \\
-                            -o StrictHostKeyChecking=no \\
-                            -o ConnectTimeout=30 \\
-                            "\$SSH_USER@\$DEPLOY_HOST" \\
-                            "
-                                set -e
-                                echo '\$ECR_PASSWORD' | docker login \\
-                                    --username AWS \\
-                                    --password-stdin '${ECR_REGISTRY}'
+                        remote "set -e
+                            docker pull $IMAGE_REF
+                            docker rm -f $APP_NAME >/dev/null 2>&1 || true
+                            docker run -d --name $APP_NAME --restart unless-stopped \\
+                                -p 8000:8000 \\
+                                -e APP_VERSION=$IMAGE_TAG \\
+                                -l deploy.build=$BUILD_NUMBER \\
+                                -l deploy.commit=$GIT_COMMIT \\
+                                $IMAGE_REF
+                            docker ps --filter name=$APP_NAME
+                            echo Deployment complete on \\$(hostname)"
 
-                                docker pull '${FULL_IMAGE}'
-
-                                docker stop '${APP_NAME}' 2>/dev/null || true
-                                docker rm   '${APP_NAME}' 2>/dev/null || true
-
-                                docker run -d \\
-                                    --name '${APP_NAME}' \\
-                                    --restart unless-stopped \\
-                                    -p 8000:8000 \\
-                                    -e APP_VERSION='${IMAGE_TAG}' \\
-                                    -l deploy.build='${BUILD_NUMBER}' \\
-                                    -l deploy.commit='${GIT_COMMIT}' \\
-                                    '${FULL_IMAGE}'
-
-                                docker ps --filter name='${APP_NAME}'
-                                echo 'Deployment complete on \$(hostname)'
-                            "
                         echo "✓ Deploy PASSED"
-                    """
+                    '''
                 }
             }
             post {
@@ -450,32 +456,30 @@ print(len(d.get('components', [])))
             when {
                 anyOf {
                     branch 'main'
+                    expression { return env.GIT_BRANCH in ['main', 'origin/main'] }
                     expression { return params.FORCE_DEPLOY }
                 }
             }
             steps {
-                sh """
-                    echo "==> Waiting 15 s for container to start..."
-                    sleep 15
-
-                    echo "==> Health check: http://\$DEPLOY_HOST:8000/health"
-                    HTTP_STATUS=\$(curl -sf -o /dev/null -w '%{http_code}' \\
-                        --connect-timeout 10 --max-time 20 \\
-                        "http://\$DEPLOY_HOST:8000/health" || echo "000")
-
-                    if [ "\$HTTP_STATUS" != "200" ]; then
-                        echo "✗ Health check returned HTTP \$HTTP_STATUS — deployment REJECTED"
+                sh '''
+                    URL="http://$DEPLOY_HOST:8000/health"
+                    echo "==> Health check: $URL (retrying for up to 60 s)"
+                    RESPONSE=""
+                    for i in $(seq 1 12); do
+                        RESPONSE=$(curl -sf --connect-timeout 5 --max-time 10 "$URL") && break
+                        sleep 5
+                    done
+                    if [ -z "$RESPONSE" ]; then
+                        echo "✗ Health check never returned 200 — deployment REJECTED"
                         exit 1
                     fi
+                    echo "Health response: $RESPONSE"
 
-                    RESPONSE=\$(curl -sf --connect-timeout 10 "http://\$DEPLOY_HOST:8000/health")
-                    echo "Health response: \$RESPONSE"
-
-                    python3 - << 'PY'
-import json, sys
-response = '''"\$RESPONSE"'''
-d = json.loads(response.strip("'\""))
-assert d.get('status') == 'healthy', f"Expected 'healthy', got: {d.get('status')}"
+                    RESPONSE="$RESPONSE" python3 - <<'PY'
+import json, os
+d = json.loads(os.environ["RESPONSE"])
+assert d.get("status") == "healthy", f"Expected 'healthy', got: {d.get('status')}"
+assert d.get("version") == os.environ["IMAGE_TAG"], f"Expected version {os.environ['IMAGE_TAG']}, got: {d.get('version')}"
 print(f"  service: {d['service']}")
 print(f"  version: {d['version']}")
 print(f"  status:  {d['status']}")
@@ -483,18 +487,18 @@ PY
 
                     echo ""
                     echo "✓ Verify PASSED"
-                    echo "  Image:  \${FULL_IMAGE}"
-                    echo "  Build:  \${BUILD_NUMBER}"
-                    echo "  Commit: \${GIT_COMMIT}"
-                    echo "  Host:   \$DEPLOY_HOST"
-                """
+                    echo "  Image:  $IMAGE_REF"
+                    echo "  Build:  $BUILD_NUMBER"
+                    echo "  Commit: $GIT_COMMIT"
+                    echo "  Host:   $DEPLOY_HOST"
+                '''
             }
             post {
                 failure {
                     echo '✗ Deployment verification FAILED — see docs/deployment.md for rollback instructions'
                 }
                 success {
-                    echo "✓ Deployment of ${env.FULL_IMAGE ?: APP_NAME} verified and healthy"
+                    echo '✓ Deployed image verified and healthy'
                 }
             }
         }
@@ -504,13 +508,11 @@ PY
     // ── Post ──────────────────────────────────────────────────────────────────
     post {
         always {
-            script {
-                // Local image cleanup — ignore failures
-                def img = env.FULL_IMAGE ?: ''
-                if (img) {
-                    sh(script: "docker rmi '${img}' 2>/dev/null || true", returnStatus: true)
-                }
-            }
+            // Drop local image copies and the stored ECR login — ignore failures
+            sh(script: '''
+                docker rmi "$FULL_IMAGE" "$FULL_IMAGE_BUILD" >/dev/null 2>&1 || true
+                docker logout "$ECR_REGISTRY" >/dev/null 2>&1 || true
+            ''', returnStatus: true)
             archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
             echo """
 ╔══════════════════════════════════════╗
