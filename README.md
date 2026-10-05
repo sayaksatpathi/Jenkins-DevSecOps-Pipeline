@@ -37,12 +37,12 @@ GitHub ──── webhook (HMAC-SHA256) ────► Jenkins
                                        (syft → CycloneDX + SPDX)
                                             │
                                             ▼
-                                       Sign Image
-                                          (cosign)
-                                            │
-                                            ▼
                                         Push ECR
                                     (:sha + :build-N)
+                                            │
+                                            ▼
+                                       Sign Image
+                                   (cosign, by digest)
                                             │
                                             ▼
                                          Deploy
@@ -77,7 +77,7 @@ GitHub ──── webhook (HMAC-SHA256) ────► Jenkins
 | SBOM             | Syft                    | CycloneDX + SPDX software bill of materials  |
 | Image Signing    | Cosign                  | Cryptographic container image signing        |
 | Registry         | Amazon ECR              | Immutable tagged image storage               |
-| Deployment       | SSH + Docker            | EC2 Docker host deployment                   |
+| Deployment       | SSH + Docker            | Any Docker host over SSH (EC2 or [local target](local-deploy-target/)) |
 | Verification     | curl + Python           | Post-deploy health check gate                |
 
 ---
@@ -94,9 +94,9 @@ GitHub ──── webhook (HMAC-SHA256) ────► Jenkins
 | 6 | Docker Build     | docker     | ✓ Fail = stop            | Tagged OCI image                  |
 | 7 | Trivy Scan       | trivy      | ✓ CRITICAL = stop        | `reports/trivy-results.json`      |
 | 8 | SBOM             | syft       | ✓ Fail = stop            | `reports/sbom-cyclonedx.json`     |
-| 9 | Sign Image       | cosign     | ✓ Fail = stop            | OCI annotation in ECR             |
-|10 | Push to ECR      | aws cli    | ✓ Fail = stop            | ECR image with SHA tag            |
-|11 | Deploy           | ssh+docker | ✓ Fail = stop            | Running container on EC2          |
+| 9 | Push to ECR      | aws cli    | ✓ Fail = stop            | ECR image + `reports/image-digest.txt` |
+|10 | Sign Image       | cosign     | ✓ Fail = stop            | Signature in ECR, verified by digest |
+|11 | Deploy           | ssh+docker | ✓ Fail = stop            | Signed digest running on deploy host |
 |12 | Verify           | curl       | ✓ Fail = rollback needed | Health response                   |
 
 ---
@@ -111,7 +111,7 @@ Test failure       → Unit Test stage fails    → no Docker build
 SAST finding       → SAST stage fails         → no Docker build
 Vulnerable dep     → Dep Scan fails           → no Docker build
 Critical CVE       → Trivy stage fails        → no ECR push
-Signing failure    → Sign stage fails         → no ECR push
+Signing failure    → Sign stage fails         → no deployment
 Health check fail  → Verify stage fails       → deployment rejected
 ```
 
@@ -154,6 +154,9 @@ See [docs/jenkins-setup.md](docs/jenkins-setup.md) for detailed instructions.
 | `deploy-ssh-key`       | SSH Username with key      | SSH key for deployment host           |
 | `cosign-private-key`   | Secret file                | cosign.key (generated locally)        |
 | `cosign-password`      | Secret text                | cosign key passphrase                 |
+
+The two AWS credentials can be issued and stored in one step, without the secret
+ever being displayed, by [`scripts/setup-jenkins-aws-credentials.sh`](scripts/setup-jenkins-aws-credentials.sh).
 
 **No credentials appear in source code or documentation.**
 

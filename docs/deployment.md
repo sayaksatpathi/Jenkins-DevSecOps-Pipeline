@@ -23,19 +23,28 @@ The focus is on **pipeline gates**, not infrastructure complexity.
 
 ## Deployment Flow (Jenkins)
 
-1. All CI and security stages pass (Test → Lint → SAST → Dep Scan → Build → Trivy → SBOM → Sign)
+1. All CI and security stages pass (Test → Lint → SAST → Dep Scan → Build → Trivy → SBOM)
 2. Image is pushed to ECR with two tags:
-   - `:a1b2c3d4` — Git commit SHA (immutable, primary tag)
+   - `:a1b2c3d4` — Git commit SHA (primary tag)
    - `:build-42` — Jenkins build number (secondary reference)
-3. Jenkins SSHes to the deployment EC2 host
-4. ECR auth token is obtained and passed to the remote `docker login`
-5. `docker pull` fetches the new image
-6. `docker stop` + `docker rm` stops the previous container
-7. `docker run` starts the new container
-8. Jenkins waits 15 s then executes the Verify stage
+3. The digest ECR reports is recorded; from here on only that digest is used
+4. Cosign signs the digest (the signature is stored in ECR) and verifies it
+5. Jenkins SSHes to the deployment host
+6. An ECR auth token is piped over SSH stdin to the remote `docker login`
+7. `docker pull <digest>`, replace the previous container, `docker run`
+8. Verify polls `/health` for up to 60 s and asserts `status=healthy` and `version=<git sha>`
 
 The `Deploy` and `Verify` stages **only execute on the `main` branch** (or when
 `FORCE_DEPLOY=true` is set as a pipeline parameter).
+
+### Local deploy target (no EC2 needed)
+
+[`local-deploy-target/`](../local-deploy-target/) builds a stand-in deployment host:
+its own Docker engine (Docker-in-Docker) reachable only over SSH as user `deploy`
+with key auth. Run it on the Jenkins Docker host (commands are in its Dockerfile
+header), then set the `deploy-host` credential to `jf-deploy-target` and
+`deploy-ssh-key` to the matching private key. The deployed service is published on
+the host at `http://localhost:8001/health`.
 
 ---
 

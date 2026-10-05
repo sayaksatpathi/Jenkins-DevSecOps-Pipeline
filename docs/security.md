@@ -144,8 +144,8 @@ The pipeline **fails closed**: any stage failure prevents deployment.
 | Docker Build     | Yes                       |
 | Trivy (CRITICAL) | Yes (configurable)        |
 | SBOM             | Yes                       |
-| Sign Image       | Yes                       |
 | Push to ECR      | Yes                       |
+| Sign Image       | Yes                       |
 | Deploy           | Yes                       |
 | Verify           | Yes — rejects deployment  |
 
